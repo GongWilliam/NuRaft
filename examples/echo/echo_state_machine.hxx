@@ -26,6 +26,7 @@ limitations under the License.
 
 using namespace nuraft;
 
+// 实现 echo 状态机接口
 class echo_state_machine : public state_machine {
 public:
     echo_state_machine()

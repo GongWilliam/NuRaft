@@ -32,9 +32,11 @@ namespace nuraft {
 class cluster_config;
 class snapshot;
 class state_machine {
+    // 添加默认构造、虚析构函数以及禁止默认复制和赋值
     __interface_body__(state_machine);
 
 public:
+    // 专用作提交日志的辅助结构体
     struct ext_op_params {
         ext_op_params(ulong _log_idx,
                       ptr<buffer>& _data)
