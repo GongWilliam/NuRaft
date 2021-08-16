@@ -28,6 +28,7 @@ limitations under the License.
 #include "handle_custom_notification.hxx"
 #include "peer.hxx"
 #include "snapshot.hxx"
+#include "snapshot_sync_ctx.hxx"
 #include "stat_mgr.hxx"
 #include "state_machine.hxx"
 #include "state_mgr.hxx"
@@ -66,6 +67,8 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , commit_bg_stopped_(false)
     , append_bg_stopped_(false)
     , write_paused_(false)
+    , sm_commit_paused_(false)
+    , sm_commit_exec_in_progress_(false)
     , next_leader_candidate_(-1)
     , im_learner_(false)
     , serving_req_(false)
@@ -354,7 +357,8 @@ void raft_server::apply_and_log_current_params() {
           "custom election quorum size %d, "
           "snapshot receiver %s, "
           "leadership transfer wait time %d, "
-          "grace period of lagging state machine %d",
+          "grace period of lagging state machine %d, "
+          "snapshot IO: %s",
           params->election_timeout_lower_bound_,
           params->election_timeout_upper_bound_,
           params->heart_beat_interval_,
@@ -372,7 +376,8 @@ void raft_server::apply_and_log_current_params() {
           params->custom_election_quorum_size_,
           params->exclude_snp_receiver_from_quorum_ ? "EXCLUDED" : "INCLUDED",
           params->leadership_transfer_min_wait_time_,
-          params->grace_period_of_lagging_state_machine_ );
+          params->grace_period_of_lagging_state_machine_,
+          params->use_bg_thread_for_snapshot_io_ ? "ASYNC" : "BLOCKING" );
 
     status_check_timer_.set_duration_ms(params->heart_beat_interval_);
     status_check_timer_.reset();
@@ -404,6 +409,12 @@ void raft_server::shutdown() {
 
     // If the global manager exists, cancel all pending requests.
     cancel_global_requests();
+
+    // Cancel snapshot requests if exist.
+    ptr<raft_params> params = ctx_->get_params();
+    if (params->use_bg_thread_for_snapshot_io_) {
+        snapshot_io_mgr::instance().drop_reqs(this);
+    }
 
     // Terminate background commit thread.
     {   recur_lock(lock_);
@@ -1513,7 +1524,7 @@ raft_server::peer_info raft_server::get_peer_info(int32 srv_id) const {
     peer_info ret;
     ptr<peer> pp = entry->second;
     ret.id_ = pp->get_id();
-    ret.last_log_idx_ = pp->get_next_log_idx() - 1;
+    ret.last_log_idx_ = pp->get_last_accepted_log_idx();
     ret.last_succ_resp_us_ = pp->get_resp_timer_us();
     return ret;
 }
@@ -1527,7 +1538,7 @@ std::vector<raft_server::peer_info> raft_server::get_peer_info_all() const {
         peer_info pi;
         ptr<peer> pp = entry.second;
         pi.id_ = pp->get_id();
-        pi.last_log_idx_ = pp->get_next_log_idx() - 1;
+        pi.last_log_idx_ = pp->get_last_accepted_log_idx();
         pi.last_succ_resp_us_ = pp->get_resp_timer_us();
         ret.push_back(pi);
     }
