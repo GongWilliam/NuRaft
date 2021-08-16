@@ -35,6 +35,7 @@ public:
 
     ~echo_state_machine() {}
 
+    // precommit 只是打印提交的 log 信息
     ptr<buffer> pre_commit(const ulong log_idx, buffer& data) {
         // Extract string from `data.
         buffer_serializer bs(data);
@@ -46,6 +47,7 @@ public:
         return nullptr;
     }
 
+    // commit 只是打印提交的 log 信息，然后更新 commit idx
     ptr<buffer> commit(const ulong log_idx, buffer& data) {
         // Extract string from `data.
         buffer_serializer bs(data);
@@ -60,11 +62,13 @@ public:
         return nullptr;
     }
 
+    // commit_config 只是更新 commit idx
     void commit_config(const ulong log_idx, ptr<cluster_config>& new_conf) {
         // Nothing to do with configuration change. Just update committed index.
         last_committed_idx_ = log_idx;
     }
 
+    // rollback 只是打印
     void rollback(const ulong log_idx, buffer& data) {
         // Extract string from `data.
         buffer_serializer bs(data);
@@ -75,6 +79,7 @@ public:
                   << str << std::endl;
     }
 
+    // read_logical_snp_obj 返回一个 fake 的数据 0
     int read_logical_snp_obj(snapshot& s,
                              void*& user_snp_ctx,
                              ulong obj_id,
@@ -90,6 +95,7 @@ public:
         return 0;
     }
 
+    // save_logical_snp_obj 只是打印快照信息
     void save_logical_snp_obj(snapshot& s,
                               ulong& obj_id,
                               buffer& data,
